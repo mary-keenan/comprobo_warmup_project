@@ -38,8 +38,14 @@ class obstacle_avoider(object):
 
 	def process_sensor_reading(self, data):
 		# convert angle/distance to x/y values
+		
+
 		# sum x and y values
+
+
 		# find the resulting angle/magnitude
+
+		
 		# turn the robot away from the angle, angular velocity depends on magnitude
 
 
