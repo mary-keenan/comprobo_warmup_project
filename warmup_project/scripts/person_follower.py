@@ -1,6 +1,6 @@
- #!/usr/bin/env python
- """ This script makes a robot follow a person at some specified distance """
-from geometry_msgs.msg import Twist, Vector3
+#!/usr/bin/env python
+""" This script makes a robot follow a person at some specified distance """
+from geometry_msgs.msg import Twist, Vector3, Pose
 from sensor_msgs.msg import LaserScan
 from neato_node.msg import Bump
 from visualization_msgs.msg import Marker
@@ -16,8 +16,10 @@ class person_follower(object):
 		self.publisher = rospy.Publisher('cmd_vel', Twist, queue_size = 10)
 		self.rate = rospy.Rate(100)
 		self.vel_msg = Twist()
-		self.marker = Marker(scale=Vector3(x=1,y=1),color=Vector3(a=1,r=1))
-		self.marker_publisher = rospy.Publisher('person_marker', marker, queue_size = 10)
+		self.marker = Marker(scale=Vector3(x=1,y=1))
+		self.marker.color.a = 1
+		self.marker.color.r = 1
+		self.marker_publisher = rospy.Publisher('person_marker', Marker, queue_size = 10)
 		self.vel_msg.linear.x = 0
 		self.vel_msg.angular.z = 0
 		self.position_x = 0
@@ -25,8 +27,8 @@ class person_follower(object):
 		self.angle = 0
 
 		# set parameters
-		self.allowed_dist_from_person = 1
-		self.base_angular_speed = .2
+		self.allowed_dist_from_person = .5
+		self.base_angular_speed = .005
 		self.base_linear_speed = .1
 
 
@@ -66,6 +68,7 @@ class person_follower(object):
 				min_avg_value = moving_range_avg
 				min_avg_center_index = (start_index + end_index)/2
 
+		print "angle: " + str(min_avg_center_index)
 		if min_avg_center_index > 180: # the person is on the left
 			min_avg_center_index = -(min_avg_center_index - 180) # covers case where person is to the right of the robot
 
@@ -77,6 +80,11 @@ class person_follower(object):
 			self.vel_msg.angular.z = self.base_angular_speed * min_avg_center_index
 			self.vel_msg.linear.x = self.base_linear_speed
 
+		print "dist: " + str(min_avg_value)
+		print "ang: " + str(self.vel_msg.angular.z)
+		print "lin: " + str(self.vel_msg.linear.x)
+
+		# visualize person
 		marker_points = []
 		for angle in range(min_avg_center_index - size_of_box / 2, min_avg_center_index + size_of_box / 2):
 			point = self.calculate_point_position(angle, values[angle])
@@ -88,7 +96,7 @@ class person_follower(object):
 		fixed_frame_point_angle = self.angle + angle # angle of robot + angle of point
 		x_position = self.position_x + math.cos(fixed_frame_point_angle) * distance
 		y_position = self.position_y + math.sin(fixed_frame_point_angle) * distance
-		return (x_position, y_position)
+		return Vector3(x = x_position, y = y_position)
 
 
 	def subscribe_to_position(self):

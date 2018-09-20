@@ -4,6 +4,7 @@ from geometry_msgs.msg import Twist, Vector3, Pose
 from sensor_msgs.msg import LaserScan
 from neato_node.msg import Bump
 from visualization_msgs.msg import Marker
+from nav_msgs.msg import Odometry
 import rospy
 import math
 from tf.transformations import euler_from_quaternion, rotation_matrix, quaternion_from_matrix
@@ -16,8 +17,11 @@ class wall_follower(object):
 		self.publisher = rospy.Publisher('cmd_vel', Twist, queue_size = 10)
 		self.rate = rospy.Rate(100)
 		self.vel_msg = Twist()
-		self.marker = Marker(scale=Vector3(x=1,y=1),color=Vector3(a=1,r=1))
-		self.marker_publisher = rospy.Publisher('wall_marker', marker, queue_size = 10)
+		self.marker = Marker(scale = Vector3(x = .05, y = .05), type = 8)
+		self.marker.color.a = 1
+		self.marker.color.r = 1
+		self.marker.header.frame_id = "odom"
+		self.marker_publisher = rospy.Publisher('wall_marker', Marker, queue_size = 10)
 		self.vel_msg.linear.x = 0
 		self.vel_msg.angular.z = 0
 		self.position_x = 0
@@ -27,7 +31,7 @@ class wall_follower(object):
 		# set parameters
 		self.threshold_for_parallelism = .03 # how high the standard for parallelism is
 		self.threshold_for_wall = 1 # how close the wall should be before the robot starts turning
-		self.base_angular_speed = .2 # used for proportional control
+		self.base_angular_speed = .3 # used for proportional control
 		self.forward_speed = .1 # default linear speed
 
 	def run(self):
@@ -43,11 +47,12 @@ class wall_follower(object):
 
 
 	def subscribe_to_position(self):
-		rospy.Subscriber("/pose", Pose, self.update_position)
+		rospy.Subscriber("/odom", Odometry, self.update_position)
 
 
-	def update_position(self, pose):
+	def update_position(self, odom):
 		""" Convert pose (geometry_msgs.Pose) to a (x,y,yaw) tuple """
+		pose = odom.pose.pose
 		orientation_tuple = (pose.orientation.x,
 							 pose.orientation.y,
 							 pose.orientation.z,
@@ -86,16 +91,17 @@ class wall_follower(object):
 				wall_points.append(point)
 		if possible_wall_hits < 20:
 			return False
+
 		self.marker.points = wall_points
 		self.marker_publisher.publish(self.marker)
 		return True		
 
 
 	def calculate_point_position(self, angle, distance):
-		fixed_frame_point_angle = self.angle + angle # angle of robot + angle of point
+		fixed_frame_point_angle = self.angle + math.radians(angle) # angle of robot + angle of point
 		x_position = self.position_x + math.cos(fixed_frame_point_angle) * distance
 		y_position = self.position_y + math.sin(fixed_frame_point_angle) * distance
-		return (x_position, y_position)
+		return Vector3(x = x_position, y = y_position)
 
 
 	def check_if_parallel(self, data):
