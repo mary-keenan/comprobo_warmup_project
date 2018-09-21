@@ -15,19 +15,20 @@ class person_follower(object):
 	def __init__(self):
 		rospy.init_node('bumpty_dumpty')
 		self.publisher = rospy.Publisher('cmd_vel', Twist, queue_size = 10)
-		self.rate = rospy.Rate(1)
+		self.rate = rospy.Rate(100)
 		self.vel_msg = Twist()
-		self.marker = Marker(scale=Vector3(x=.05,y=.05),type = 8) # type 8 is points
+		self.vel_msg.linear.x = 0
+		self.vel_msg.angular.z = 0
+		# set up the marker for highlighting the wall
+		self.marker = Marker(scale = Vector3(x = .05, y = .05), type = 8)
 		self.marker.color.a = 1
 		self.marker.color.r = 1
 		self.marker.header.frame_id = "odom"
-		self.marker_publisher = rospy.Publisher('person_marker', Marker, queue_size = 10)
-		self.vel_msg.linear.x = 0
-		self.vel_msg.angular.z = 0
+		self.marker_publisher = rospy.Publisher('wall_marker', Marker, queue_size = 10)
+		# set up the variables that represent the Neato's position, for calculating the marker's points
 		self.position_x = 0
 		self.position_y = 0
 		self.angle = 0
-		self.last_angle = 0
 
 		# set parameters
 		self.allowed_dist_from_person = .6
@@ -50,23 +51,27 @@ class person_follower(object):
 
 
 	def process_sensor_reading(self, data):
+		""" converts raw data into heading for Neato """
 
+		# make best guess about where a leg is		
 		angle_of_legs, distance_from_legs = self.detect_legs(data)
-		print "angle: " + str(angle_of_legs) + " distance: " + str(distance_from_legs)
+		#print "angle: " + str(angle_of_legs) + " distance: " + str(distance_from_legs)
 
-		# keeps it from spazzing too much when a point jumps around by slowing dramatic turns
+		# this keeps it from spazzing too much when a point jumps around by slowing dramatic turns
 		difference_from_last_angle = self.last_angle - angle_of_legs
 		if abs(difference_from_last_angle) > 20:
 			self.last_angle = angle_of_legs + difference_from_last_angle/2
 			return
 		self.last_angle = angle_of_legs
 
-		# visualize legs of person the robot is detecting and hopefully following
+		# visualize the leg(s) of the person the robot is detecting and hopefully following
 		self.visualize_legs(data, angle_of_legs)
 		
+		# if the Neato is the right distance away, it can stop moving and skip the rest of this
 		if self.check_if_appropriate_distance_from_person(distance_from_legs):
 			return
 
+		# set the angular velocity based on where the person is
 		if angle_of_legs > -15 and angle_of_legs < 15: # straight enough
 			self.vel_msg.angular.z = 0
 		elif angle_of_legs < 180: # to the left
@@ -74,16 +79,18 @@ class person_follower(object):
 		else: # to the right
 			self.vel_msg.angular.z = - self.base_angular_speed * (360 - angle_of_legs)
 
-		distance_from_ideal_distance = distance_from_legs - self.allowed_dist_from_person
-		
+		# set the linear velocity (and reverse the angular velocity if it needs to go backwards)
 		if angle_of_legs > 90 and angle_of_legs < 270:
-			self.vel_msg.linear.x = - self.base_linear_speed# * math.sqrt(distance_from_ideal_distance)
+			self.vel_msg.linear.x = - self.base_linear_speed
 			self.vel_msg.angular.z *= -1
 		else: 
-			self.vel_msg.linear.x = self.base_linear_speed# * math.sqrt(distance_from_ideal_distance)
+			self.vel_msg.linear.x = self.base_linear_speed
 
 
 	def detect_legs(self, data):
+		""" looks for the biggest bump in the data points to detect a person's leg
+			and filter out walls """
+
 		# weight it so farther away objects have less of a difference than closer ones
 		distances = []
 		for angle in range(360):
@@ -102,6 +109,7 @@ class person_follower(object):
 			moving_averages.append(moving_avg)
 		moving_averages += [moving_averages[1]]
 
+		# find differences between moving averages
 		differences_in_averages = [] # length of 390, with repeat of 1-30
 		for angle in range(360):
 			differences_in_averages.append(moving_averages[angle + 1] - moving_averages[angle])
@@ -124,7 +132,8 @@ class person_follower(object):
 
 
 	def check_if_appropriate_distance_from_person(self, distance):
-		if distance < self.allowed_dist_from_person:
+		""" keeps the Neato in line """
+		if distance < self.allowed_dist_from_person: # TODO might be too close
 			print "within correct distance"
 			self.vel_msg.angular.z = 0
 			self.vel_msg.linear.x = 0
@@ -134,6 +143,7 @@ class person_follower(object):
 
 
 	def visualize_legs(self, data, angle_of_legs):
+		""" plots the points associated with the person's leg """
 		wrapped_angles = data.ranges[355:360] + data.ranges + data.ranges[0:5] # add 5 to get the right value per angle
 		person_points = []
 		for angle in range(angle_of_legs - 5, angle_of_legs + 5):
@@ -145,6 +155,7 @@ class person_follower(object):
 
 
 	def calculate_point_position(self, angle, distance):
+		""" converts from polar coordinates to cartesian """
 		fixed_frame_point_angle = self.angle + math.radians(angle) # angle of robot + angle of point
 		x_position = self.position_x + math.cos(fixed_frame_point_angle) * distance
 		y_position = self.position_y + math.sin(fixed_frame_point_angle) * distance

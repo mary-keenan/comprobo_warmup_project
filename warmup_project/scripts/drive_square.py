@@ -3,7 +3,9 @@
 import rospy
 from geometry_msgs.msg import Twist
 
+
 class square_driver(object):
+
 
 	def __init__(self):
 		rospy.init_node('bumpty_dumpty')
@@ -14,8 +16,9 @@ class square_driver(object):
 		self.vel_msg.angular.z = 0
 
 		# set parameters
-		self.time_until_turn = 3.2
-		self.time_for_turn = 1.57
+		self.time_until_turn = 3.2 # seconds
+		self.time_for_turn = 1.57 # seconds
+
 
 	def run(self):
 		while not rospy.is_shutdown():
@@ -23,7 +26,9 @@ class square_driver(object):
 			self.turn()
 			self.rate.sleep()
 
+
 	def move_straight(self):
+		""" move straight for self.time_until_turn amount of time """
 		time_started_moving_straight = rospy.Time.now()
 		time_stop_moving_straight = time_started_moving_straight + rospy.Duration(self.time_until_turn)
 		self.vel_msg.linear.x = 1
@@ -32,7 +37,9 @@ class square_driver(object):
 		while rospy.Time.now() < time_stop_moving_straight:
 			self.publisher.publish(self.vel_msg)
 
+
 	def turn(self):
+		""" turn for self.time_for_turn amount of time """
 		time_started_turning = rospy.Time.now()
 		time_stop_turning = time_started_turning + rospy.Duration(self.time_for_turn)
 		self.vel_msg.linear.x = 0
@@ -40,6 +47,7 @@ class square_driver(object):
 
 		while rospy.Time.now() < time_stop_turning:
 			self.publisher.publish(self.vel_msg)
+
 
 
 if __name__ == '__main__':

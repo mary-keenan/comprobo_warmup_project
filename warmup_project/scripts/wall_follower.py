@@ -17,13 +17,15 @@ class wall_follower(object):
 		self.publisher = rospy.Publisher('cmd_vel', Twist, queue_size = 10)
 		self.rate = rospy.Rate(100)
 		self.vel_msg = Twist()
+		self.vel_msg.linear.x = 0
+		self.vel_msg.angular.z = 0
+		# set up the marker for highlighting the wall
 		self.marker = Marker(scale = Vector3(x = .05, y = .05), type = 8)
 		self.marker.color.a = 1
 		self.marker.color.r = 1
 		self.marker.header.frame_id = "odom"
 		self.marker_publisher = rospy.Publisher('wall_marker', Marker, queue_size = 10)
-		self.vel_msg.linear.x = 0
-		self.vel_msg.angular.z = 0
+		# set up the variables that represent the Neato's position, for calculating the marker's points
 		self.position_x = 0
 		self.position_y = 0
 		self.angle = 0
@@ -31,8 +33,10 @@ class wall_follower(object):
 		# set parameters
 		self.threshold_for_parallelism = .03 # how high the standard for parallelism is
 		self.threshold_for_wall = 1 # how close the wall should be before the robot starts turning
-		self.base_angular_speed = .3 # used for proportional control
+		self.min_number_of_points_for_wall = 20 # how many points need to be within the threshold for a wall to be recognized
+		self.base_angular_speed = .3
 		self.forward_speed = .1 # default linear speed
+
 
 	def run(self):
 		self.subscribe_to_position()
@@ -81,6 +85,8 @@ class wall_follower(object):
 
 
 	def check_if_wall_nearby(self, data):
+		""" checks if a certain number of points fall within the specified distance for wall detection
+			and highlights them in rviz if they do"""
 		possible_wall_hits = 0
 		wall_points = []
 		for angle in range(360):
@@ -89,15 +95,16 @@ class wall_follower(object):
 				possible_wall_hits += 1
 				point = self.calculate_point_position(angle, distance)
 				wall_points.append(point)
-		if possible_wall_hits < 20:
+		if possible_wall_hits < self.min_number_of_points_for_wall:
 			return False
-
+		# publish the marker to its topic
 		self.marker.points = wall_points
 		self.marker_publisher.publish(self.marker)
 		return True		
 
 
 	def calculate_point_position(self, angle, distance):
+		""" converts from polar coordinates to cartesian """
 		fixed_frame_point_angle = self.angle + math.radians(angle) # angle of robot + angle of point
 		x_position = self.position_x + math.cos(fixed_frame_point_angle) * distance
 		y_position = self.position_y + math.sin(fixed_frame_point_angle) * distance
@@ -105,6 +112,9 @@ class wall_follower(object):
 
 
 	def check_if_parallel(self, data):
+		""" checks if the robot is within the threshold for parallelism (it doesn't necessarily need to be
+			perfectly parallel, just within the specified range for error, self.threshold_for_parallelism)"""		
+
 		# figure out if it's closest to an object in front of it (vs to the side of it)
 		front_angles = filter(lambda x: x != 0.0, data.ranges[-30:] + data.ranges[:30])
 		left_angles = filter(lambda x: x != 0.0, data.ranges[60:120])
@@ -153,6 +163,10 @@ class wall_follower(object):
 
 
 	def set_heading(self, data):
+		""" determines which of the four quadrants (front left, back left, back right, and front right)
+			are closest to the wall and adjusts direction based on that """
+		
+		# initialize quadrant lists
 		front_left_quadrant = data.ranges[0:90]
 		front_left_values = [10] # just so the length can't be zero when finding average
 		back_left_quadrant = data.ranges[90:180]
@@ -162,6 +176,7 @@ class wall_follower(object):
 		front_right_quadrant = data.ranges[270:360]
 		front_right_values = [10]
 
+		# find the avg value for each quadrant
 		for front_left_value in front_left_quadrant:
 			if front_left_value != 0.0:
 				front_left_values.append(front_left_value)
@@ -182,6 +197,7 @@ class wall_follower(object):
 				back_right_values.append(back_right_value)
 		back_right_avg = sum(back_right_values)/len(back_right_values)
 
+		# determine direction and speed of heading based on differences between quadrant averages
 		if front_left_avg < front_right_avg and front_left_avg < back_left_avg: # robot is headed towards the wall to the left, so it should go right
 			self.vel_msg.angular.z = -self.base_angular_speed * (back_left_avg - front_left_avg)
 		elif front_left_avg < front_right_avg and front_left_avg > back_left_avg: # robot is headed away from the wall to the right, it should go left
@@ -195,10 +211,14 @@ class wall_follower(object):
 	def subscribe_to_bump_sensor(self):
 		rospy.Subscriber("/bump", Bump, self.stop_movement)
 
+
 	def stop_movement(self, msg):
+		""" makes the Neato stop moving if it bumps into anything (presumably a wall) """
 		if msg.leftFront == 1 or msg.leftSide == 1 or msg.rightFront == 1 or msg.rightSide == 1:
 			self.vel_msg.linear.x = 0
 			self.vel_msg.angular.z = 0
+
+
 
 if __name__ == '__main__':
 	node = wall_follower()
