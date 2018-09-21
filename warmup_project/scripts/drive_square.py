@@ -8,6 +8,7 @@ class square_driver(object):
 
 
 	def __init__(self):
+		""" initializes the square_driver object """
 		rospy.init_node('bumpty_dumpty')
 		self.publisher = rospy.Publisher('cmd_vel', Twist, queue_size = 10)
 		self.rate = rospy.Rate(10)
@@ -21,6 +22,7 @@ class square_driver(object):
 
 
 	def run(self):
+		""" starts the square-driving functionality """
 		while not rospy.is_shutdown():
 			self.move_straight()
 			self.turn()
@@ -28,7 +30,7 @@ class square_driver(object):
 
 
 	def move_straight(self):
-		""" move straight for self.time_until_turn amount of time """
+		""" moves straight for self.time_until_turn amount of time """
 		time_started_moving_straight = rospy.Time.now()
 		time_stop_moving_straight = time_started_moving_straight + rospy.Duration(self.time_until_turn)
 		self.vel_msg.linear.x = 1
@@ -39,7 +41,7 @@ class square_driver(object):
 
 
 	def turn(self):
-		""" turn for self.time_for_turn amount of time """
+		""" turns for self.time_for_turn amount of time """
 		time_started_turning = rospy.Time.now()
 		time_stop_turning = time_started_turning + rospy.Duration(self.time_for_turn)
 		self.vel_msg.linear.x = 0

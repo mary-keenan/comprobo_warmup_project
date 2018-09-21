@@ -11,6 +11,7 @@ from geometry_msgs.msg import Twist
 class teleoperate_robot(object):
 
 	def __init__(self):
+		""" initializes teleop object """
 		# initialize rospy
 		rospy.init_node('bumpty_dumpty')
 		self.publisher = rospy.Publisher('cmd_vel', Twist, queue_size = 10)
@@ -24,10 +25,12 @@ class teleoperate_robot(object):
 		self.settings = termios.tcgetattr(sys.stdin)
 
 	def set_still_state(self):
+		""" stops robot from moving linearly or angularly """
 		self.vel_msg.linear.x = 0
 		self.vel_msg.angular.z = 0
 
 	def run(self):
+		""" starts the teleop functionality """
 		key = None
 		while key != '\x03' and not rospy.is_shutdown():
 			key = self.get_key()
@@ -36,6 +39,7 @@ class teleoperate_robot(object):
 			self.rate.sleep()
 
 	def get_key(self):
+		""" gets the key that was pressed """
 		tty.setraw(sys.stdin.fileno())
 		select.select([sys.stdin], [], [], 0)
 		key = sys.stdin.read(1)
@@ -43,6 +47,7 @@ class teleoperate_robot(object):
 		return key
 
 	def process_key(self, key):
+		""" turns a keypress into movement """
 		if key == 'q': # forward-left
 			self.vel_msg.linear.x = .5
 			self.vel_msg.angular.z = 1
@@ -69,6 +74,8 @@ class teleoperate_robot(object):
 		elif key == 'c': # backwards-right
 			self.vel_msg.linear.x = -.5
 			self.vel_msg.angular.z = -1
+
+
 
 if __name__ == '__main__':
 	node = teleoperate_robot()

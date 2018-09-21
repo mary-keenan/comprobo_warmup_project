@@ -13,6 +13,7 @@ from tf.transformations import euler_from_quaternion, rotation_matrix, quaternio
 class person_follower(object):
 
 	def __init__(self):
+		""" initializes the person_follower object """
 		rospy.init_node('bumpty_dumpty')
 		self.publisher = rospy.Publisher('cmd_vel', Twist, queue_size = 10)
 		self.rate = rospy.Rate(100)
@@ -37,6 +38,7 @@ class person_follower(object):
 
 
 	def run(self):
+		""" starts person-following functionality """
 		self.subscribe_to_laser_sensor()
 		self.subscribe_to_position()
 
@@ -47,6 +49,7 @@ class person_follower(object):
 
 
 	def subscribe_to_laser_sensor(self):
+		""" starts subcribing to laser topic with a callback for processing the data"""
 		rospy.Subscriber("/stable_scan", LaserScan, self.process_sensor_reading)
 
 
@@ -163,11 +166,12 @@ class person_follower(object):
 
 
 	def subscribe_to_position(self):
+		""" starts subcribing to odometry topic with a callback for processing the data"""
 		rospy.Subscriber("/odom", Odometry, self.update_position)
 
 
 	def update_position(self, odom):
-		""" Convert pose (geometry_msgs.Pose) to a (x,y,yaw) tuple """
+		""" converts pose (geometry_msgs.Pose) to a (x,y,yaw) tuple """
 		pose = odom.pose.pose
 		orientation_tuple = (pose.orientation.x,
 							 pose.orientation.y,

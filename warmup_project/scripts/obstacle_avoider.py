@@ -1,10 +1,9 @@
 #!/usr/bin/env python
 """ This script makes a robot avoid obstacles"""
 
-from tf.transformations import euler_from_quaternion, rotation_matrix, quaternion_from_matrix
 from geometry_msgs.msg import Twist, Vector3
 from sensor_msgs.msg import LaserScan
-from nav_msgs.msg import Odometry
+from neato_node.msg import Bump
 import rospy
 import math
 
@@ -12,6 +11,7 @@ import math
 class obstacle_avoider(object):
 
 	def __init__(self):
+		""" initializes the obsctacle_avoider object """
 		rospy.init_node('bumpty_dumpty')
 		self.publisher = rospy.Publisher('cmd_vel', Twist, queue_size = 10)
 		self.rate = rospy.Rate(100)
@@ -25,12 +25,12 @@ class obstacle_avoider(object):
 
 		# set parameters
 		self.base_angular_speed = .2
-		self.base_linear_speed = .1
 
 
 	def run(self):
+		""" starts the obstacle-avoiding functionality """
 		self.subscribe_to_laser_sensor()
-		self.subscribe_to_position()
+		self.subscribe_to_bump_sensor()
 
 		while not rospy.is_shutdown():
 			# publish velocity
@@ -39,45 +39,44 @@ class obstacle_avoider(object):
 
 
 	def subscribe_to_laser_sensor(self):
+		""" starts subcribing to laser topic with a callback for processing the data"""
 		rospy.Subscriber("/stable_scan", LaserScan, self.process_sensor_reading)
 
 
 	def process_sensor_reading(self, data):
 		""" converts raw data into heading for Neato """
-				
+
 		# convert angle/distance to x/y values
 		points_list = []
 		for angle in range(360):
 			distance = data.ranges[angle]
 			if distance != 0.0:
-				point = self.calculate_point_position(angle, 10 - distance) # closer should give it more magnitude
+				point = self.calculate_point_position(angle, 10 - distance) # closer points should have more magnitude
 				points_list.append(point)
 
-		# sum x and y values
-		x_sum = 100 # weight it so it wants to go forward at all costs
+		# sum x and y values to get net force in x and y directions
+		x_sum = 100 # weight it so it wants to go forward more
 		y_sum = 0
 		for point in points_list:
 			x_sum += point.x
 			y_sum += point.y
 
-		# find the resulting angle/magnitude
+		# find the resulting angle/magnitude of the summed forces
 		angle, magnitude = self.calculate_velocity(x_sum, y_sum)
-		print "angle: " + str(angle) + " magnitude: " + str(magnitude)
 
-		# turn the robot away from the angle, angular velocity depends on magnitude
-		if angle > 90 and angle < 270:
-			angle_proportion = math.cos(math.radians(angle - 90))
-			print angle_proportion
+		# if the force is pushing forwards (<90, >270), the robot doesn't need to change its behavior because there's no obvious obstacle in its path yet;
+		# if the force is pushing backwards (>90, <270), however, it means there's something in front of the robot and it needs to turn
+		if angle > 90 or angle < 270:
+			angle_proportion = math.sin(math.radians(angle))
 			magnitude_proportion = (magnitude ** (.125))
 			self.vel_msg.angular.z = self.base_angular_speed * angle_proportion * magnitude_proportion
-			print magnitude_proportion
 
 
 	def calculate_point_position(self, angle, distance):
 		""" converts from polar coordinates to cartesian """
-		fixed_frame_point_angle = self.angle + math.radians(angle) # angle of robot + angle of point
-		x_position = self.position_x + math.cos(fixed_frame_point_angle) * distance
-		y_position = self.position_y + math.sin(fixed_frame_point_angle) * distance
+		angle_in_radians = math.radians(angle + 180) 
+		x_position = math.cos(angle_in_radians) * distance
+		y_position = math.sin(angle_in_radians) * distance
 		return Vector3(x = x_position, y = y_position)
 
 
@@ -85,26 +84,21 @@ class obstacle_avoider(object):
 		""" converts from cartesian coordinates to polar """
 		if y == 0:
 			y = 0.00000001 # so we don't get division by zero complaints
-		angle = math.degrees(math.atan(x/y)) + 180 # because we want to go the opposite direction
+		angle = math.degrees(math.atan(x/y))
 		magnitude = math.sqrt(x**2 + y**2)
 		return (angle, magnitude)
 
 
-	def subscribe_to_position(self):
-		rospy.Subscriber("/odom", Odometry, self.update_position)
+	def subscribe_to_bump_sensor(self):
+		""" starts subcribing to bump topic with a callback for processing the data"""
+		rospy.Subscriber("/bump", Bump, self.stop_movement)
 
 
-	def update_position(self, odom):
-		""" Convert pose (geometry_msgs.Pose) to a (x,y,yaw) tuple """
-		pose = odom.pose.pose
-		orientation_tuple = (pose.orientation.x,
-							 pose.orientation.y,
-							 pose.orientation.z,
-							 pose.orientation.w)
-		angles = euler_from_quaternion(orientation_tuple)
-		self.position_x = pose.position.x
-		self.position_y = pose.position.y
-		self.angle = angles[2]
+	def stop_movement(self, msg):
+		""" makes the Neato stop moving if it bumps into anything (presumably a wall) """
+		if msg.leftFront == 1 or msg.leftSide == 1 or msg.rightFront == 1 or msg.rightSide == 1:
+			self.vel_msg.linear.x = 0
+			self.vel_msg.angular.z = 0
 
 
 
