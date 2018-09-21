@@ -19,11 +19,11 @@ class finite_state_controller(object):
 		self.vel_msg.angular.z = 0
 		self.wall_is_nearby = False
 		self.wall_is_parallel = False
+		self.follow_wall = 0
 		self.desired_heading = 0
 
 		# set parameters
-		self.base_angular_speed = .2
-		self.base_linear_speed = .1
+		self.base_angular_speed_for_wall = .2
 		self.time_until_turn = 3.2
 		self.time_for_turn = 1.57
 		self.threshold_for_parallelism = .03 # how high the standard for parallelism is
@@ -32,44 +32,30 @@ class finite_state_controller(object):
 
 	def run(self):
 		self.subscribe_to_laser_sensor()
+		time_started_moving_straight = rospy.Time.now()
+		time_stop_moving_straight = time_started_moving_straight + rospy.Duration(self.time_until_turn)
 
 		while not rospy.is_shutdown():
-			self.move_forward() # if it sees a wall, it starts following it
-			self.turn()				
+			while rospy.Time.now() < time_stop_moving_straight and not self.wall_is_nearby and not rospy.is_shutdown():
+				print "square dancing"
+				self.vel_msg.linear.x = 1
+				self.vel_msg.angular.z = 0
+				self.publisher.publish(self.vel_msg)
+
+			while self.wall_is_nearby and not rospy.is_shutdown():
+				print "following wall"
+				self.vel_msg.linear.x = .1
+				self.vel_msg.angular.z = self.desired_heading
+				self.publisher.publish(self.vel_msg)
+
+			print "square dancing"
+			self.turn()
 			self.rate.sleep()
-
-
-	# PROCESS LASER SENSOR DATA TO DETERMINE STATE
-	def subscribe_to_laser_sensor(self):
-		rospy.Subscriber("/stable_scan", LaserScan, self.process_sensor_reading)
-
-
-	def process_sensor_reading(self, data):
-		if self.check_if_wall_nearby(data):
-			self.wall_is_nearby = True
-
-		if self.check_if_parallel(data):
-			self.wall_is_parallel = True
-
-		self.set_heading(data)
+			time_started_moving_straight = rospy.Time.now()
+			time_stop_moving_straight = time_started_moving_straight + rospy.Duration(self.time_until_turn)		
 
 
 	# DRIVE SQUARE
-	def move_forward(self):
-		time_started_moving_straight = rospy.Time.now()
-		time_stop_moving_straight = time_started_moving_straight + rospy.Duration(self.time_until_turn)
-		self.vel_msg.linear.x = 1
-		self.vel_msg.angular.z = 0
-
-		while rospy.Time.now() < time_stop_moving_straight:
-			self.publisher.publish(self.vel_msg)
-			while self.wall_is_nearby: # if this is true, it follows the wall until it disappears
-				if self.wall_is_parallel:
-					self.vel_msg.angular.z = 0
-				else:
-					self.vel_msg.angular.z = self.desired_heading
-
-
 	def turn(self):
 		time_started_turning = rospy.Time.now()
 		time_stop_turning = time_started_turning + rospy.Duration(self.time_for_turn)
@@ -80,15 +66,27 @@ class finite_state_controller(object):
 			self.publisher.publish(self.vel_msg)
 
 
+	# PROCESS LASER SENSOR DATA TO DETERMINE STATE
+	def subscribe_to_laser_sensor(self):
+		rospy.Subscriber("/stable_scan", LaserScan, self.process_sensor_reading)
+
+
+	def process_sensor_reading(self, data):
+		self.check_if_wall_nearby(data)
+		if not self.check_if_parallel(data):
+			self.set_heading(data)
+
+
 	# FOLLOW WALL
 	def check_if_wall_nearby(self, data):
 		possible_wall_hits = 0
 		for distance in data.ranges:
 			if distance > 0.0 and distance < self.threshold_for_wall:
 				possible_wall_hits += 1
-		if possible_wall_hits < 20:
-			return False
-		return True
+		if possible_wall_hits > 20:
+			self.wall_is_nearby = True
+			return
+		self.wall_is_nearby = False
 
 
 	def check_if_parallel(self, data):
@@ -134,6 +132,7 @@ class finite_state_controller(object):
 
 		# if the average difference for either the left or the right is below the specified threshold, the robot is parallel to the wall
 		if (left_count > 0 and (left_difference/left_count) < self.threshold_for_parallelism) or (right_count > 0 and (right_difference/right_count) < self.threshold_for_parallelism):
+			self.desired_heading = 0
 			return True
 		return False
 
@@ -169,13 +168,13 @@ class finite_state_controller(object):
 		back_right_avg = sum(back_right_values)/len(back_right_values)
 
 		if front_left_avg < front_right_avg and front_left_avg < back_left_avg: # robot is headed towards the wall to the left, so it should go right
-			self.desired_heading = -self.base_angular_speed * (back_left_avg - front_left_avg)
+			self.desired_heading = -self.base_angular_speed_for_wall * (back_left_avg - front_left_avg)
 		elif front_left_avg < front_right_avg and front_left_avg > back_left_avg: # robot is headed away from the wall to the right, it should go left
-			self.desired_heading = self.base_angular_speed * (front_left_avg - back_left_avg)
+			self.desired_heading = self.base_angular_speed_for_wall * (front_left_avg - back_left_avg)
 		elif front_left_avg > front_right_avg and front_right_avg < back_right_avg: # robot is headed towards the wall to the right, so it should go left
-			self.desired_heading = self.base_angular_speed * (back_right_avg - front_right_avg)
+			self.desired_heading = self.base_angular_speed_for_wall * (back_right_avg - front_right_avg)
 		elif front_left_avg > front_right_avg and front_right_avg > back_right_avg: # robot is headed away from the wall to the left, it should go right
-			self.desired_heading = -self.base_angular_speed * (front_right_avg - back_right_avg)
+			self.desired_heading = -self.base_angular_speed_for_wall * (front_right_avg - back_right_avg)
 
 
 
