@@ -18,6 +18,7 @@ class obstacle_avoider(object):
 		self.vel_msg = Twist()
 		self.vel_msg.linear.x = .1
 		self.vel_msg.angular.z = 0
+		# set up the variables that represent the Neato's position -- TODO, might not need?
 		self.position_x = 0
 		self.position_y = 0
 		self.angle = 0
@@ -42,6 +43,8 @@ class obstacle_avoider(object):
 
 
 	def process_sensor_reading(self, data):
+		""" converts raw data into heading for Neato """
+				
 		# convert angle/distance to x/y values
 		points_list = []
 		for angle in range(360):
@@ -71,6 +74,7 @@ class obstacle_avoider(object):
 
 
 	def calculate_point_position(self, angle, distance):
+		""" converts from polar coordinates to cartesian """
 		fixed_frame_point_angle = self.angle + math.radians(angle) # angle of robot + angle of point
 		x_position = self.position_x + math.cos(fixed_frame_point_angle) * distance
 		y_position = self.position_y + math.sin(fixed_frame_point_angle) * distance
@@ -78,6 +82,7 @@ class obstacle_avoider(object):
 
 
 	def calculate_velocity(self, x, y):
+		""" converts from cartesian coordinates to polar """
 		if y == 0:
 			y = 0.00000001 # so we don't get division by zero complaints
 		angle = math.degrees(math.atan(x/y)) + 180 # because we want to go the opposite direction
@@ -100,6 +105,8 @@ class obstacle_avoider(object):
 		self.position_x = pose.position.x
 		self.position_y = pose.position.y
 		self.angle = angles[2]
+
+
 
 if __name__ == '__main__':
 	node = obstacle_avoider()
